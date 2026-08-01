@@ -171,6 +171,46 @@ deterministic but the CLI run is not idempotent.
 The CLI MUST refuse to run if `--with` and `--without` mention the same
 feature, and MUST refuse to run if `--profile` or `--language` is unknown.
 
+### 4.1 Exit codes
+
+There are exactly five, centralised in one module so no call site
+invents a sixth:
+
+| Code | Meaning                                                     |
+| ---- | ----------------------------------------------------------- |
+| 0    | Success.                                                    |
+| 1    | Unexpected internal error (a bug in the generator).         |
+| 2    | Invalid invocation: unknown profile, language or feature; the same feature in `--with` and `--without`; an invalid project name. |
+| 3    | Filesystem refusal: non-empty target without `--force`; a manifest path already on disk; a path that escapes the target. |
+| 4    | Verification failed on the generated project.               |
+
+Verification failure exits 4 rather than propagating the underlying
+tool's exit code. `pnpm`, `vitest`, `ruff` and `pytest` do not agree
+on what a given non-zero code means, so propagating it would export
+an unstable contract to whatever calls `quicio`.
+
+### 4.2 Project name and target directory
+
+`<project>` is validated once, at the CLI, against
+`^[a-z][a-z0-9._-]*$` with a 214-character limit. The leading-letter
+rule is doing real work: a name starting with a digit cannot become a
+valid Python module identifier, and uppercase or space characters are
+illegal as an npm package name. Validating once is what allows each
+language module to derive its concrete names without re-validating.
+
+The target directory is `<out>/<project>`, with `--out` defaulting to
+the current working directory. Every file the generator writes lives
+inside it; `--out` moves the boundary, it never widens it.
+
+Name derivation differs per language, and conflating the two Python
+names is the most common defect in a generator of this kind:
+
+| Language   | Concrete name                | Derivation                    |
+| ---------- | ---------------------------- | ----------------------------- |
+| TypeScript | `package.json` `name`        | identity                      |
+| Python     | `[project].name`             | identity (legal under PEP 503) |
+| Python     | module dir under `src/`      | `-` and `.` replaced by `_`   |
+
 ## 5. Profiles
 
 Every profile declares a `buildKind`. That value is the profile's
@@ -250,6 +290,18 @@ Implementation of each feature happens in its own OpenSpec change
 once a real consumer exists. This is intentional: the rule from the
 product owner is "no anticipar features sin consumidores reales."
 
+### What the registry actually contains
+
+Only the two features that have a spec in this change are registered:
+`openspec-bootstrap` and `speck-integration`. `github-actions` and
+`docker` are named in the roadmap and are **not** registered, so
+`--with docker` fails with exit 2 and a list of the registered ids.
+
+Registering a feature with no spec would be the same anticipation N4
+forbids, and worse, it would make `--with docker` succeed silently as
+a no-op. A user would reasonably read that as "Docker support
+worked."
+
 ### Additive-only, and what it costs
 
 v0 features are **additive-only**: `contribute(context)` returns new
@@ -280,6 +332,32 @@ pnpm run check && pnpm test && pnpm run build && pnpm run format:check
 For v0 (no CI yet), the orchestrator runs these locally after every
 self-written phase commit, exactly as in the speck precedent.
 
+### 8.1 Dependency pinning and reproducibility
+
+Every dependency in a generated project carries an **exact version
+literal**. No `^`, `~`, `>=`, `*`, `latest`, tag, or git ref. All
+pinned versions live in a single versions module per language, so
+bumping the toolchain is one reviewable diff instead of a search
+across templates.
+
+The reason is that S1 and S2 claim a generated project passes its
+own contract "on a clean shell". With ranges, that stops being a
+property of the generator and becomes a property of whatever the
+registry resolved that morning. The criteria would decay silently,
+and the first failure would land on a user, not on CI.
+
+The generator does **not** ship a lockfile. A `pnpm-lock.yaml` or
+`uv.lock` written by the generator is stale the day it is written and
+corresponds to no resolution the user's tooling actually performed.
+The generated README instructs the user to commit the lockfile their
+first install produces.
+
+The cost of this decision is honest and worth stating: pinned
+versions go stale, and nothing here renews them automatically. The
+end-to-end smoke test in the quality gate is what surfaces the drift,
+by failing when a pinned tool stops working with the rest of the set.
+A renewal policy is a follow-up concern, not a v0 requirement.
+
 ## 9. Migration seams
 
 None. Foundry is a new repo. There is no existing code to migrate.
@@ -288,8 +366,16 @@ None. Foundry is a new repo. There is no existing code to migrate.
 
 - The generator does not send telemetry, analytics, or network
   requests to a remote service. All output is local.
-- The generator does not read or write outside the target directory
-  (enforced by `internal/fs` path guards).
+- The generator does not read or write outside the target directory.
+  This is enforced by `internal/fs` and speced in
+  `generator-filesystem`: absolute paths, `..` segments, and
+  symlinked components resolving outside the target are all rejected
+  before the first byte is written.
+- Writes are atomic per file. There is no transaction across files:
+  a failed run can leave a partial project, and the error message
+  says so rather than pretending otherwise.
+- Generated files are UTF-8 text with mode `0644`. v0 writes no
+  binary content and sets no executable bit.
 - Generated projects do not include secrets, tokens, or example
   credentials.
 
@@ -308,7 +394,21 @@ None. Foundry is a new repo. There is no existing code to migrate.
   runtime failure but a design wall (section 7). Surface it as a
   blocker; do not add an ad-hoc merge.
 - **Toolchain missing** (e.g. `pnpm` not on PATH): the post-generation
-  smoke test fails with a non-zero exit and a clear message; the
-  generated project is **not** deleted (the user keeps partial work).
+  smoke test fails with exit code 4 and a message naming the missing
+  tool; the generated project is **not** deleted (the user keeps
+  partial work).
 - **Generator crash mid-write**: writes are atomic per file via
-  `internal/fs`; a crash leaves either the full file or no file.
+  `internal/fs`; a crash leaves either the full file or no file. It
+  can still leave a partial project, and the message must say so.
+- **A hyphenated project name in Python**: `my-lib` is a legal
+  distribution name and an illegal module identifier. The module
+  directory is `src/my_lib/` and the generated test imports
+  `my_lib`. Getting this wrong produces a project that installs and
+  then fails its own first test.
+- **A name starting with a digit**: rejected at the CLI with exit 2,
+  precisely so this failure never reaches the Python module.
+- **`--out` into a directory that does not exist**: created, without
+  requiring `--force`. `--force` is about a non-empty target, not a
+  missing one.
+- **Symlink inside the target pointing outside it**: rejected. A
+  path guard that only checks for `..` is not a path guard.

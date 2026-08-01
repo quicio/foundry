@@ -65,6 +65,64 @@ the `buildKind` value supplied by `composition` and SHALL NOT read
 - **THEN** it SHALL NOT reference the string `library`,
   `application`, or `experiment`.
 
+### Requirement: Exact dependency versions
+
+Every dependency the template declares SHALL carry an exact version
+literal. Range specifiers (`^`, `~`, `>=`, `*`, `latest`, a git ref,
+or a tag) SHALL NOT appear in a generated `package.json`.
+
+Without this, "passes on a clean shell" stops being a property of the
+generator and becomes a property of whatever npm resolved that day,
+and the success criteria decay silently.
+
+All pinned versions SHALL live in a single module inside the
+TypeScript language module, so that bumping the toolchain is one
+reviewable diff rather than a search across templates.
+
+#### Scenario: no range specifier is generated
+
+- **WHEN** a generated `package.json` is parsed
+- **THEN** every value in `dependencies` and `devDependencies` SHALL
+  match an exact semver literal.
+
+#### Scenario: versions live in one place
+
+- **WHEN** the TypeScript language module is inspected
+- **THEN** every pinned version SHALL be declared in a single
+  versions module and SHALL NOT be repeated in a template.
+
+### Requirement: Lockfile is not shipped
+
+The generator SHALL NOT write a `pnpm-lock.yaml` into the generated
+project. A lockfile written by the generator would be stale from the
+first day and would not correspond to any resolution the user's pnpm
+performed.
+
+The generated `README` SHALL instruct the user to commit the
+lockfile that their first `pnpm install` produces.
+
+#### Scenario: no lockfile in the manifest
+
+- **WHEN** the resolved manifest is inspected
+- **THEN** it SHALL contain no entry whose `path` is
+  `pnpm-lock.yaml`.
+
+### Requirement: Package name derivation
+
+`derivePackageName(projectName)` SHALL return the validated project
+name unchanged, and that value SHALL be written as `name` in the
+generated `package.json`.
+
+The CLI's name validation already guarantees the result is a legal
+unscoped npm name, so no transformation is needed. The function
+exists for symmetry with Python, where a transformation is required.
+
+#### Scenario: the npm name matches the project name
+
+- **WHEN** `quicio new my-lib --language typescript` runs
+- **THEN** the generated `package.json` SHALL declare
+  `"name": "my-lib"`.
+
 ### Requirement: Workspace integrity
 
 A generated TypeScript project MUST pass the verification contract

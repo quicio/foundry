@@ -25,9 +25,11 @@ Initial axes (v0):
 
 - **Profiles:** `library`, `application`, `experiment`
 - **Languages:** `typescript`, `python`
-- **Features:** named placeholders only
-  (`openspec-bootstrap`, `speck-integration`,
-  `github-actions`, `docker`). Real implementations land in
+- **Features:** empty stubs only. v0 **registers** exactly
+  `openspec-bootstrap` and `speck-integration`. `github-actions` and
+  `docker` are on the roadmap and are **not** registered, so
+  `--with docker` fails with a list of valid ids rather than
+  succeeding as a silent no-op. Real implementations land in
   follow-up OpenSpec changes once a concrete consumer exists.
 
 Features are **additive-only in v0**: a feature contributes new files
@@ -79,13 +81,28 @@ quicio new <project> [options]
   -l, --language <name>    typescript | python (default: typescript)
       --with <feature>     repeatable, opt-in
       --without <feature>  repeatable, opt-out
-      --out <dir>          target directory (default: cwd)
+      --out <dir>          parent directory (default: cwd).
+                           The project lands in <out>/<project>
       --force              allow a NON-EMPTY target directory;
                            never authorises overwriting a file
       --dry-run            print plan, write nothing
       --no-verify          skip post-generation smoke test
 ```
 
+`<project>` must match `^[a-z][a-z0-9._-]*$`. The leading letter is
+required because a name starting with a digit cannot become a valid
+Python module identifier.
+
 The generator never overwrites or deletes an existing file, with or
 without `--force`. If any path it is about to write already exists,
 it exits 3 and changes nothing.
+
+### Exit codes
+
+| Code | Meaning                                                  |
+| ---- | -------------------------------------------------------- |
+| 0    | Success.                                                 |
+| 1    | Unexpected internal error.                               |
+| 2    | Invalid invocation (unknown profile, language or feature; conflicting flags; invalid project name). |
+| 3    | Filesystem refusal (non-empty target without `--force`; path already on disk; path escaping the target). |
+| 4    | Verification failed on the generated project.            |

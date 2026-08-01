@@ -103,11 +103,33 @@ The system SHALL register exactly three profiles for v0:
 
 ### Requirement: Profile isolation from language
 
-A `Profile` object SHALL NOT reference any language-specific
-identifier (e.g. `ts`, `python`, `pnpm`, `uv`). Profile metadata is
-language-agnostic.
+A `Profile` SHALL be language-agnostic. The invariant is structural,
+not textual: the `profiles` module SHALL NOT import from `languages`,
+and the `Profile` type SHALL expose no field capable of carrying a
+toolchain value. A profile's only influence on the toolchain is its
+`buildKind`.
 
-#### Scenario: profile metadata contains no language strings
+The original wording asked for a substring scan over stringified
+metadata. That is a heuristic, not a proof: it fails on an innocent
+description and passes on a genuine leak stored under a different
+name. The import-graph check is the one that actually holds.
 
-- **WHEN** every registered profile's metadata is stringified
-- **THEN** no string value SHALL contain a language id.
+#### Scenario: profiles do not import languages
+
+- **WHEN** the import graph of the `profiles` module is inspected
+- **THEN** it SHALL contain no edge into `languages`.
+
+#### Scenario: no profile field can hold a toolchain value
+
+- **WHEN** the `Profile` type is inspected
+- **THEN** its fields SHALL be exactly `id`, `displayName`,
+  `description`, `commands`, and `buildKind`, and none SHALL be a
+  free-form toolchain, script, or dependency field.
+
+#### Scenario: metadata smoke check on exact tokens
+
+- **WHEN** each registered profile's `id` and `commands` values are
+  compared against the exact tokens `typescript`, `python`, `pnpm`,
+  and `uv`
+- **THEN** none SHALL match. This is a smoke check over identifier
+  fields only; `description` is free prose and SHALL NOT be scanned.

@@ -82,6 +82,76 @@ declare `taskipy` as a development dependency.
 - **THEN** `uv run task check` SHALL resolve the task runner and
   SHALL NOT fail with an unresolved `task` executable.
 
+### Requirement: Exact dependency versions
+
+Every dependency the template declares SHALL carry an exact version
+specifier (`==`). Range specifiers (`>=`, `~=`, `^`, or an unpinned
+name) SHALL NOT appear in a generated `pyproject.toml`.
+
+All pinned versions SHALL live in a single module inside the Python
+language module, so that bumping the toolchain is one reviewable
+diff.
+
+#### Scenario: no range specifier is generated
+
+- **WHEN** a generated `pyproject.toml` is parsed
+- **THEN** every dependency entry SHALL use `==` with an exact
+  version.
+
+#### Scenario: versions live in one place
+
+- **WHEN** the Python language module is inspected
+- **THEN** every pinned version SHALL be declared in a single
+  versions module and SHALL NOT be repeated in a template.
+
+### Requirement: Lockfile is not shipped
+
+The generator SHALL NOT write a `uv.lock` into the generated
+project. The generated `README` SHALL instruct the user to commit the
+lockfile that their first `uv sync` produces.
+
+#### Scenario: no lockfile in the manifest
+
+- **WHEN** the resolved manifest is inspected
+- **THEN** it SHALL contain no entry whose `path` is `uv.lock`.
+
+### Requirement: Distribution and module name derivation
+
+Python needs two names where TypeScript needs one, and conflating
+them is the most common defect in a Python generator.
+
+- The **distribution name** written as `[project].name` SHALL be the
+  validated project name unchanged. The CLI's validation already
+  guarantees it is legal under PEP 503.
+- The **module name**, which is the directory created under `src/`
+  and the identifier the tests import, SHALL be the project name
+  with every `-` and `.` replaced by `_`.
+
+`derivePackageName(projectName)` SHALL return the distribution name.
+The module name SHALL be derived by the Python module and used for
+the source directory, the import in the generated test, and the
+`basedpyright` target.
+
+#### Scenario: a hyphenated project yields an importable module
+
+- **WHEN** `quicio new my-lib --language python` runs
+- **THEN** `[project].name` SHALL be `my-lib`, the source directory
+  SHALL be `src/my_lib/`, and the generated test SHALL import
+  `my_lib`.
+
+#### Scenario: a dotted project name is normalised for the module
+
+- **WHEN** the project name contains a `.`
+- **THEN** the module directory SHALL replace it with `_`, so the
+  module remains a single importable identifier.
+
+#### Scenario: the generated test imports successfully
+
+- **WHEN** `uv run task test` runs in a project generated from a
+  hyphenated name
+- **THEN** the import of the module SHALL resolve and the test SHALL
+  pass.
+
 ### Requirement: Workspace integrity
 
 A generated Python project MUST pass the verification contract from

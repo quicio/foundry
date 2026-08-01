@@ -137,3 +137,41 @@ entries are byte-identical and order-identical across runs.
 - **WHEN** `compose` is called twice with the same arguments
 - **THEN** both calls SHALL produce `Manifest` objects whose entries
   match path-for-path, content-for-content, and owner-for-owner.
+
+### Requirement: No non-deterministic inputs in generated content
+
+Determinism is not achievable by assertion alone, so the sources of
+non-determinism are prohibited explicitly. Generated content SHALL
+NOT depend on:
+
+- the current date or time, including a year in a licence header or
+  a generated-on comment;
+- random or pseudo-random values, including generated ids;
+- the host environment: username, home directory, absolute paths,
+  hostname, locale, or environment variables;
+- iteration over an unordered collection. Every JSON object and TOML
+  table SHALL be emitted in a fixed, literal key order;
+- a dependency version that is not an exact literal, as required by
+  `typescript-toolchain` and `python-toolchain`.
+
+The only permitted inputs are the validated project name, the
+profile, the language, and the resolved feature set.
+
+#### Scenario: two runs a day apart are identical
+
+- **WHEN** `compose` runs with the same arguments on two different
+  dates, under two different users, from two different working
+  directories
+- **THEN** both manifests SHALL be byte-identical.
+
+#### Scenario: no generated file carries a timestamp
+
+- **WHEN** every entry's `content` is inspected
+- **THEN** none SHALL contain a date, a time, a hostname, or an
+  absolute filesystem path.
+
+#### Scenario: key order is literal, not iterated
+
+- **WHEN** a generated `package.json` or `pyproject.toml` is parsed
+  and re-serialised across two runs
+- **THEN** the key order SHALL be identical in both.

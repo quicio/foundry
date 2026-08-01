@@ -29,9 +29,12 @@ Introduce the **Quicio Engineering Foundation**:
 - Two initial languages: `TypeScript`, `Python`.
 - A **verification contract** that every generated project must satisfy:
   it MUST expose working `check`, `test`, `build`, and `format` commands.
-- A **feature** axis reserved for opt-in capabilities. v0 only documents
-  the features the product owner has named; we do not implement features
-  without a real consumer.
+- A **feature** axis reserved for opt-in capabilities. v0 registers
+  only the two features that have a spec in this change
+  (`openspec-bootstrap`, `speck-integration`), and both are empty
+  stubs. `github-actions` and `docker` are named in the roadmap and
+  are deliberately **not** registered, so asking for them fails
+  honestly instead of succeeding as a silent no-op.
 
 ## Goals
 
@@ -103,6 +106,22 @@ Introduce the **Quicio Engineering Foundation**:
   strings `library`, `application`, or `experiment`: a language
   module receives the profile's abstract `buildKind` and nothing
   else.
+- S6. `quicio new my-lib --language python` produces a project whose
+  distribution name is `my-lib`, whose module directory is
+  `src/my_lib/`, and whose generated test imports `my_lib` and
+  passes. A generated project that installs and then fails its own
+  first test on a hyphenated name is the defect this criterion
+  exists to prevent.
+- S7. Two generation runs of the same arguments, on different dates,
+  under different users, from different working directories, produce
+  byte-identical output. Every dependency carries an exact version
+  literal and no lockfile is shipped, so "passes on a clean shell"
+  stays a property of the generator rather than of whatever the
+  registry resolved that day.
+- S8. The generator never writes outside `<out>/<project>` and never
+  overwrites an existing file. Absolute paths, `..` segments, and
+  symlinked components resolving outside the target are all rejected
+  before the first byte is written.
 
 ## Out of scope (follow-up OpenSpec changes, *not* this one)
 
