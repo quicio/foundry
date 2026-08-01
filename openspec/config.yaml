@@ -1,0 +1,53 @@
+schema: spec-driven
+
+context: |
+  Quicio Foundry is an Engineering Foundation, not a runtime library and not a
+  domain library. It generates and verifies other projects by composing a base
+  skeleton with a profile, a language, and a selected set of optional features.
+
+  Composition model (fixed for v0):
+    base + profile + language + selected features
+
+  Initial scope (validated explicitly by the user):
+    - Profiles: library, application, experiment
+    - Languages: TypeScript, Python
+    - First delivery: (library + TypeScript) and (experiment + Python)
+    - Then: (application + TypeScript)
+    - Features planned but only speced when a concrete consumer appears:
+      OpenSpec bootstrap, optional Speck integration, GitHub Actions,
+      Docker (possibly later)
+    - CLI surface: `quicio new <project>`
+    - Verification contract (every generated project MUST expose):
+      check, test, build, format
+
+  Hard restrictions from the product owner:
+    - Do not generate monorepos or empty layer directories by default.
+    - Favor composition over duplicated templates.
+    - Do not anticipate features without a real consumer.
+    - Do not share domain entities or a runtime core with Speck or OpenSpec.
+
+# Per-artifact rules
+rules:
+  proposal:
+    - Include a "Non-goals" section listing what is explicitly out of scope.
+    - State success criteria as observable, verifiable behaviors.
+  design:
+    - Show the composition model explicitly (base + profile + language + features).
+    - Document module boundaries and the dependency direction.
+    - Document how the verification contract (check/test/build/format) is met
+      for every generated project.
+  tasks:
+    - Break tasks into TDD-shaped vertical slices of max ~30 minutes.
+    - Each task MUST be one of the verbs RED, GREEN, or REFACTOR, applied to a single
+      behavior (test, implementation, or refactor that preserves all greens).
+
+# Per-operation guidance
+operations:
+  apply:
+    guidance:
+      - Never write code outside the task range; surface blockers instead.
+      - Generated projects must be re-verified by running their own
+        check/test/build/format commands end-to-end.
+  archive:
+    guidance:
+      - Confirm the change is fully implemented (tasks 1..N all green) before archiving.
