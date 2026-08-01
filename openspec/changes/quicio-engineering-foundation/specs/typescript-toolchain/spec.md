@@ -19,14 +19,17 @@ The TypeScript language module SHALL declare the following fields:
 - `id: 'typescript'`
 - `packageManager: 'pnpm'`
 - `engines.node: '>=22'`
-- `commands.check`, `commands.test`, `commands.build`,
-  `commands.format`, `commands.format:check`: strings that resolve
-  to the documented scripts in the generated `package.json`.
+- `commands.check`, `commands.test`, `commands.build`: strings that
+  resolve to the documented scripts in the generated `package.json`.
+- `commands.format.write` and `commands.format.check`: the two modes
+  of the single abstract `format` command. There is no fifth
+  abstract command.
 
 #### Scenario: language module declares the documented metadata
 
 - **WHEN** the TypeScript language module is inspected
-- **THEN** it SHALL expose exactly the fields listed above.
+- **THEN** it SHALL expose the fields listed above, and its abstract
+  command names SHALL be exactly `check`, `test`, `build`, `format`.
 
 ### Requirement: Concrete scripts in package.json
 
@@ -35,21 +38,32 @@ following `scripts`:
 
 - `check`: `biome check . && tsc --noEmit`
 - `test`: `vitest run`
-- `build`: profile-dependent (see scenario below)
-- `format`: `biome format --write .`
-- `format:check`: `biome format .`
+- `build`: `buildKind`-dependent (see scenarios below)
+- `format`: `biome format --write .` (the `format` write mode)
+- `format:check`: `biome format .` (the `format` check mode)
 
-#### Scenario: library profile has a real build
+`format:check` is a concrete `package.json` script name, not an
+abstract command. The module SHALL resolve its `build` script from
+the `buildKind` value supplied by `composition` and SHALL NOT read
+`Profile.id`.
 
-- **WHEN** the resolved profile is `library`
+#### Scenario: buildKind distributable has a real build
+
+- **WHEN** the supplied `buildKind` is `distributable`
 - **THEN** `scripts.build` SHALL be `tsup` (or an equivalent that
   produces `dist/`).
 
-#### Scenario: experiment profile has a no-op build
+#### Scenario: buildKind none has a no-op build
 
-- **WHEN** the resolved profile is `experiment`
+- **WHEN** the supplied `buildKind` is `none`
 - **THEN** `scripts.build` SHALL succeed without producing artifacts
   and SHALL be `echo "no-op build"`.
+
+#### Scenario: module never branches on profile id
+
+- **WHEN** the TypeScript language module's source is inspected
+- **THEN** it SHALL NOT reference the string `library`,
+  `application`, or `experiment`.
 
 ### Requirement: Workspace integrity
 

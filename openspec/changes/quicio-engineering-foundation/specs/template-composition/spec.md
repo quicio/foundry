@@ -51,6 +51,65 @@ entries with the same `path`.
 - **THEN** `compose` SHALL throw a typed error naming both `owner`
   values and the offending `path`.
 
+### Requirement: Features are additive-only in v0
+
+A feature SHALL contribute new files only. v0 SHALL NOT provide any
+merge, patch, or append strategy: there is no way for a feature to
+add a script, a dependency, or a configuration key to a file owned
+by `base`, `profile`, or `language`. A feature that needs to modify
+an existing file is a blocker to surface, not a case to work around.
+
+This is a deliberate v0 restriction. Introducing a merge strategy
+(for example a per-entry `strategy: create | merge-json | merge-toml`)
+is the subject of a separate OpenSpec change, to be opened when a
+real feature requires it.
+
+#### Scenario: a feature contributing an owned path fails
+
+- **WHEN** a feature contributes an entry whose `path` is already
+  owned by `base`, `profile`, or `language`
+- **THEN** `compose` SHALL throw the same typed error as any other
+  path collision, naming both `owner` values and the `path`.
+
+### Requirement: Feature contribution signature
+
+A feature module SHALL expose
+`contribute(context) -> ManifestEntry[]`, where `context` carries the
+resolved profile `buildKind`, the language `id`, the project name,
+and the path conventions exposed by `composition`. A feature module
+SHALL NOT receive the accumulated `Manifest` and SHALL NOT return
+one. The composition engine, not the feature, appends the returned
+entries and enforces path uniqueness.
+
+#### Scenario: a feature cannot observe or rewrite other layers
+
+- **WHEN** `contribute(context)` is invoked on any feature module
+- **THEN** the argument SHALL NOT expose entries contributed by
+  `base`, `profile`, `language`, or another feature.
+
+#### Scenario: a feature returning no entries changes nothing
+
+- **WHEN** a feature's `contribute` returns an empty array
+- **THEN** the resulting `Manifest` SHALL be identical, path-for-path
+  and content-for-content, to the `Manifest` produced without that
+  feature.
+
+### Requirement: Profile-to-language resolution boundary
+
+`composition` SHALL be the only module that reads both the resolved
+`Profile` and the resolved language module. It SHALL pass the
+profile's `buildKind` to the language module and SHALL NOT pass
+`Profile.id` or any other profile field. `profiles` and `languages`
+SHALL NOT import each other.
+
+#### Scenario: language module receives buildKind, not the profile
+
+- **WHEN** `compose` invokes the language module to resolve the
+  concrete `build` wiring
+- **THEN** the argument SHALL be the `buildKind` value only, and the
+  language module SHALL produce identical output for two different
+  profiles that declare the same `buildKind`.
+
 ### Requirement: Empty feature set is the identity
 
 The system SHALL treat an empty `features` array as identical to

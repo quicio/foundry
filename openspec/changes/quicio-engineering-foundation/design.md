@@ -14,23 +14,30 @@ base       ->  profile  ->  language  ->  selected features
   placeholder, a `.gitignore`, a project-level `check/test/build/format`
   entrypoint whose implementation is supplied by the profile + language
   (the base only declares the *names* of the four commands).
-- **profile** contributes the structure of the source tree, what gets
-  built, and the convention for tests. Profiles are language-agnostic
+- **profile** contributes the structure of the source tree, the
+  convention for tests, and a single abstract `buildKind`
+  (`distributable` or `none`). Profiles are language-agnostic
   abstractions: a `library` profile in TypeScript and a `library` profile
   in Python have the same role, but the language module fills in the
   concrete files.
 - **language** contributes the toolchain: package manager, file
   extensions, formatter, linter, test runner, build command, and the
   mapping from the abstract `check/test/build/format` names to the
-  concrete scripts.
-- **features** are opt-in. Each feature is a self-contained delta that
-  knows which files it owns. Features never modify files owned by base,
-  profile, or language. Features never modify files owned by another
-  feature.
+  concrete scripts. The language module receives `buildKind` from
+  `composition` and never sees the profile itself.
+- **features** are opt-in and **additive-only in v0**. A feature
+  contributes new files and nothing else. It cannot add a script, a
+  dependency, or a configuration key to a file owned by base, profile,
+  or language, because v0 ships no merge strategy. This is enforced
+  structurally: a feature exposes
+  `contribute(context) -> ManifestEntry[]` and never receives the
+  accumulated manifest.
 
-Composition is **deterministic** and **idempotent** at the level of
-the CLI run: given the same (profile, language, feature-set), the same
-files are produced in the same paths.
+Composition is **deterministic**: given the same (profile, language,
+feature-set), the same files are produced in the same paths with the
+same contents. It is deliberately **not idempotent** at the level of
+the CLI run: a second run into a populated directory fails closed
+rather than converging (see section 4).
 
 ## 2. Module boundaries
 
@@ -66,39 +73,62 @@ Concretely, the rules:
 - `composition` is the only module that imports from all of
   `profiles`, `languages`, `features`.
 - `profiles` and `languages` are siblings; neither imports the other.
-- `features` is intentionally minimal: it sees the resolved manifest
-  and the target paths, never the source code of profiles or languages.
+  The only value that crosses between them is the profile's
+  `buildKind`, and `composition` is what carries it. A language module
+  that references the strings `library`, `application`, or
+  `experiment` is a violation of this rule.
+- `features` is intentionally minimal: `contribute(context)` receives
+  the resolved `buildKind`, the language `id`, the project name, and
+  the path conventions. It never receives the accumulated manifest and
+  never sees the source of profiles or languages.
 - `internal/` has no inbound dependency on `composition` or above;
   it is the lowest layer.
 
 ## 3. The verification contract
 
-Every generated project MUST expose four top-level commands (named in
-the base, implemented by the language module's scripts):
+The abstract command set is **exactly four**: `check`, `test`,
+`build`, `format`. `format` has two **modes**, `write` and `check`.
+The modes are two invocations of one abstract command; they are not a
+fifth command. Concrete script and task names differ per language and
+never leak into the abstract model.
 
-- `check`    -> static analysis + format check. For TypeScript:
-  `pnpm run check` runs `biome check` + `tsc --noEmit`. For Python:
-  `uv run task check` runs `ruff check` + `basedpyright`.
-- `test`     -> the project's test runner. For TypeScript:
-  `pnpm test` (vitest). For Python: `uv run task test` (pytest).
-- `build`    -> the project must produce a distributable artifact.
-  For TypeScript libraries: `pnpm run build` produces `dist/`.
-  For Python libraries: `uv build` produces `dist/*.whl`.
-  For experiments: `build` MUST succeed but is allowed to be a
-  no-op (e.g. `echo`) — the experiment profile is not meant to ship.
-- `format`   -> `format` reformats; `format:check` only verifies.
-  For TypeScript: `biome format --write` / `biome format`. For Python:
-  `ruff format`.
+| Abstract | Mode  | TypeScript (`package.json` script) | Python (taskipy task) |
+| -------- | ----- | ---------------------------------- | --------------------- |
+| `check`  | —     | `check`                            | `check`               |
+| `test`   | —     | `test`                             | `test`                |
+| `build`  | —     | `build`                            | `build`               |
+| `format` | write | `format`                           | `format`              |
+| `format` | check | `format:check`                     | `format-check`        |
+
+What each one does:
+
+- `check`    -> static analysis. For TypeScript: `biome check` +
+  `tsc --noEmit`. For Python: `ruff check` + `basedpyright`.
+- `test`     -> the project's test runner. For TypeScript: vitest.
+  For Python: pytest.
+- `build`    -> resolved from the profile's `buildKind`. With
+  `distributable`, the project MUST produce an artifact in `dist/`
+  (`tsup` for TypeScript, `uv build` for Python). With `none`, the
+  command MUST succeed and produce nothing (`echo "no-op build"`).
+- `format`   -> write mode reformats, check mode only verifies. For
+  TypeScript: `biome format --write .` / `biome format .`. For
+  Python: `ruff format .` / `ruff format --check .`.
+
+Note for the Python module: taskipy does not reliably forward extra
+CLI arguments to the underlying command, so the check mode is its own
+task (`task format-check`). `task format --check` is not a supported
+invocation and MUST NOT appear in any spec, script, or task list.
 
 The verification contract is enforced in two places:
 
 1. The generator's own unit tests assert that, for every supported
-   (profile, language) pair, the resolved manifest contains entries
-   for all four commands and that the concrete scripts resolve to the
-   tools listed above.
+   (buildKind, language) pair, the resolved manifest contains entries
+   for all four abstract commands, including both `format` modes, and
+   that the concrete scripts resolve to the tools listed above.
 2. An end-to-end smoke test, run in CI, generates each supported pair
-   into a temp directory, then runs all four commands. This is the
-   *real* gate; unit tests are not sufficient.
+   into a temp directory, then runs `check`, `test`, `build`, and
+   `format` in check mode. This is the *real* gate; unit tests are not
+   sufficient.
 
 ## 4. CLI surface (v0)
 
@@ -113,37 +143,64 @@ Options:
       --with <feature>     Add a feature. Repeatable.
       --without <feature>  Explicitly remove a feature. Repeatable.
       --out <dir>          Target directory. Default: current directory.
-      --force              Overwrite an empty target directory.
-                           Refuses to overwrite a non-empty one.
+      --force              Allow writing into a NON-EMPTY target
+                           directory. Never authorises overwriting.
       --dry-run            Print the resolved plan without writing files.
       --no-verify          Skip the post-generation smoke test.
 ```
+
+`--force` has exactly one meaning: it permits a non-empty target
+directory. It does not authorise overwriting, and the generator never
+overwrites or deletes an existing file under any flag combination.
+The full truth table:
+
+| Target state                            | `--force` | Result |
+| --------------------------------------- | --------- | ------ |
+| Absent or empty                         | absent    | write  |
+| Absent or empty                         | present   | write  |
+| Non-empty, no manifest path collides    | absent    | exit 3 |
+| Non-empty, no manifest path collides    | present   | write  |
+| Any manifest path already exists on disk| absent    | exit 3 |
+| Any manifest path already exists on disk| present   | exit 3 |
+
+A consequence worth stating: running `quicio new` twice into the same
+directory fails closed on the last row, with or without `--force`.
+That is the intended behaviour, and it is why composition is
+deterministic but the CLI run is not idempotent.
 
 The CLI MUST refuse to run if `--with` and `--without` mention the same
 feature, and MUST refuse to run if `--profile` or `--language` is unknown.
 
 ## 5. Profiles
 
+Every profile declares a `buildKind`. That value is the profile's
+only influence on the language module's build wiring.
+
 ### library
 
+- `buildKind: distributable`.
 - Tree: `src/`, `tests/`, single `package.json` / `pyproject.toml`.
 - `build` MUST produce a distributable artifact in `dist/`.
 - `test` MUST run the unit tests and report coverage.
-- `format:check` MUST be wired.
+- `format` check mode MUST be wired.
 
 ### application (model only in v0; full delivery is a follow-up change)
 
-- The shape is reserved: an `application` profile MUST add
+- `buildKind: distributable`.
+- The shape is reserved: an `application` profile is expected to add
   `src/main.ts` (or `src/main.py`) as the entrypoint and an `e2e/`
-  folder for end-to-end tests. The full delivery is out of scope.
+  folder for end-to-end tests. This is a note on intended shape, not
+  a v0 requirement: the full delivery is out of scope and carries no
+  `SHALL` in any spec of this change.
 
 ### experiment
 
+- `buildKind: none`.
 - Tree: `src/`, `tests/`, single manifest, no `dist/` requirement.
-- `build` MUST succeed but is a no-op (`echo` for shell, no script for
-  Python; documented in the experiment's profile).
+- `build` MUST succeed but is a no-op (`echo "no-op build"` in both
+  languages).
 - `test` MUST run the tests but coverage is optional.
-- `format:check` MUST be wired.
+- `format` check mode MUST be wired.
 
 ## 6. Languages
 
@@ -154,8 +211,11 @@ feature, and MUST refuse to run if `--profile` or `--language` is unknown.
 - Linter/formatter: **Biome** (covers both `format` and `check`).
 - Type checker: `tsc --noEmit`.
 - Test runner: **Vitest**.
-- Builder: `tsup` for libraries, plain `tsc` for experiments.
-- The four abstract commands are wired in `package.json` `scripts`:
+- Builder: `tsup` when `buildKind` is `distributable`,
+  `echo "no-op build"` when it is `none`. The module reads
+  `buildKind` and never `Profile.id`.
+- The four abstract commands are wired in `package.json` `scripts`,
+  with `format` contributing two entries:
   `check`, `test`, `build`, `format`, `format:check`.
 
 ### python
@@ -165,9 +225,15 @@ feature, and MUST refuse to run if `--profile` or `--language` is unknown.
 - Linter/formatter: **Ruff** (covers both `format` and `check`).
 - Type checker: **basedpyright**.
 - Test runner: **pytest**.
-- Builder: `uv build` for libraries; no-op for experiments.
-- Tasks are declared in `[tool.taskipy.tasks]` so that
-  `uv run task <name>` works for `check/test/build/format`.
+- Builder: `uv build` when `buildKind` is `distributable`,
+  `echo "no-op build"` when it is `none`. The module reads
+  `buildKind` and never `Profile.id`.
+- Task runner: **taskipy**, declared as a development dependency so
+  `uv run task <name>` resolves after `uv sync`.
+- Tasks are declared in `[tool.taskipy.tasks]`:
+  `check`, `test`, `build`, `format`, `format-check`. The check mode
+  is its own task because taskipy does not reliably forward extra CLI
+  arguments.
 
 ## 7. Features (v0 placeholders only)
 
@@ -183,6 +249,23 @@ them.** What v0 ships is:
 Implementation of each feature happens in its own OpenSpec change
 once a real consumer exists. This is intentional: the rule from the
 product owner is "no anticipar features sin consumidores reales."
+
+### Additive-only, and what it costs
+
+v0 features are **additive-only**: `contribute(context)` returns new
+manifest entries and nothing else. There is no merge, patch, or
+append strategy, so a feature cannot add a `package.json` script, a
+dependency, or a `pyproject.toml` key. Combined with the
+no-overlapping-paths rule, a feature that needs to touch an existing
+file simply cannot be built on this model.
+
+That is a real limit, stated on purpose rather than discovered later.
+The first feature that genuinely needs it (GitHub Actions and Docker
+plausibly do not, since they only add files; OpenSpec bootstrap
+plausibly does) opens a separate OpenSpec change that introduces a
+per-entry strategy such as `create | merge-json | merge-toml`, with
+its own determinism requirements. Until then, an implementer who hits
+this wall surfaces it as a blocker instead of inventing a workaround.
 
 ## 8. Quality gates
 
@@ -218,6 +301,12 @@ None. Foundry is a new repo. There is no existing code to migrate.
   with exit code 2 and a list of valid values.
 - **Existing non-empty target directory without `--force`**: caught
   by `internal/fs`, fail with exit code 3.
+- **A manifest path already exists on disk**: caught by
+  `internal/fs`, fail with exit code 3 naming the colliding path.
+  `--force` does not suppress this; nothing is overwritten.
+- **A feature needs to modify a file it does not own**: not a
+  runtime failure but a design wall (section 7). Surface it as a
+  blocker; do not add an ad-hoc merge.
 - **Toolchain missing** (e.g. `pnpm` not on PATH): the post-generation
   smoke test fails with a non-zero exit and a clear message; the
   generated project is **not** deleted (the user keeps partial work).

@@ -19,14 +19,13 @@ Foundry itself does not import, link, or depend on Speck.
 ### Requirement: Stub module presence
 
 The system SHALL register a feature module under the id
-`speck-integration` whose `apply(manifest)` returns the manifest
-unchanged.
+`speck-integration` whose `contribute(context)` returns an empty
+array of manifest entries.
 
-#### Scenario: stub apply is the identity
+#### Scenario: stub contributes nothing
 
-- **WHEN** `apply(manifest)` is called on the stub
-- **THEN** it SHALL return a `Manifest` whose entries match the
-  input path-for-path.
+- **WHEN** `contribute(context)` is called on the stub
+- **THEN** it SHALL return an empty `ManifestEntry[]`.
 
 ### Requirement: Feature flag acceptance
 
@@ -64,5 +63,5 @@ responsibility of a separate OpenSpec change.
 
 - **WHEN** this `spec.md` is read in full
 - **THEN** it SHALL contain no `SHALL` requirement beyond the
-  identity-stub, the flag-acceptance, and the no-coupling
+  empty-contribution stub, the flag-acceptance, and the no-coupling
   scenarios above.

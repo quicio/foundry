@@ -52,8 +52,19 @@ in both `--with` and `--without`.
 
 ### Requirement: Safe target directory handling
 
-The CLI SHALL refuse to write into a non-empty target directory
-unless `--force` is supplied.
+`--force` SHALL have exactly one meaning: it permits writing into a
+target directory that is not empty. `--force` SHALL NOT authorise
+overwriting, and the CLI SHALL NOT overwrite or delete an existing
+file under any flag combination.
+
+The CLI SHALL therefore behave as follows:
+
+- Target directory absent or empty: proceed, `--force` not required.
+- Target directory non-empty, `--force` absent: exit 3.
+- Target directory non-empty, `--force` present, no manifest path
+  collides with an existing file: proceed.
+- Any manifest path collides with an existing file: exit 3, with or
+  without `--force`.
 
 #### Scenario: non-empty target directory without --force
 
@@ -66,6 +77,20 @@ unless `--force` is supplied.
 
 - **WHEN** the target directory does not exist or is empty
 - **THEN** the CLI SHALL proceed without requiring `--force`.
+
+#### Scenario: --force writes alongside unrelated existing files
+
+- **WHEN** the target directory contains only files whose paths are
+  absent from the resolved manifest, and `--force` is supplied
+- **THEN** the CLI SHALL write the manifest and SHALL leave every
+  pre-existing file byte-identical.
+
+#### Scenario: --force does not authorise overwriting
+
+- **WHEN** a resolved manifest path already exists on disk and
+  `--force` is supplied
+- **THEN** the CLI SHALL exit with code 3, SHALL name the colliding
+  path, and SHALL NOT modify or delete any existing file.
 
 ### Requirement: Dry run
 
@@ -95,14 +120,22 @@ contract on the generated project and SHALL propagate its exit code.
 - **THEN** the CLI SHALL exit 0 after writing files, even if the
   generated project's tools would fail.
 
-### Requirement: Idempotency of repeated runs into the same directory
+### Requirement: Repeated runs into the same directory fail closed
 
 Running `quicio new` twice into the same directory with the same
-arguments SHALL fail rather than overwrite.
+arguments SHALL fail rather than overwrite. This is a fail-closed
+guarantee, not idempotency: the second run does not converge to the
+same state, it refuses to run.
 
 #### Scenario: second run into the same directory
 
 - **WHEN** `quicio new demo` runs successfully once, and is then
   invoked again with the same arguments
-- **THEN** the second invocation SHALL exit non-zero and SHALL NOT
-  delete or modify any file from the first run.
+- **THEN** the second invocation SHALL exit with code 3 and SHALL
+  NOT delete or modify any file from the first run.
+
+#### Scenario: second run with --force still fails closed
+
+- **WHEN** the second invocation adds `--force`
+- **THEN** it SHALL still exit with code 3, because every manifest
+  path collides with a file written by the first run.
