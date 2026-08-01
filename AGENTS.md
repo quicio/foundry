@@ -47,7 +47,10 @@ specs. Re-introducing any of them is a defect, not a style choice.
   `build`, `format`. `format` has two modes, `write` and `check`.
   `format:check` and `format-check` are concrete script and task
   names owned by a language module; they never reach the abstract
-  model.
+  model. The set belongs to the composition model and is speced in
+  `template-composition`. No profile redeclares it: `Profile` has no
+  `commands` field, and the abstract-to-concrete mapping lives only
+  in `Language.wiring`.
 - **Profiles and languages never import each other.** The only value
   that crosses is the profile's `buildKind` (`distributable | none`),
   carried by `composition`. A language module that contains the

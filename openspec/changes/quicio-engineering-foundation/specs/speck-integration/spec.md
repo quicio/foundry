@@ -14,6 +14,10 @@ modules with Speck. Integration means: the generated project ships
 a config file that the user's local Speck installation can read.
 Foundry itself does not import, link, or depend on Speck.
 
+The registry contents (which features are registered) are governed
+by `feature-model`. This spec governs only the *behaviour* of the
+stub registered under `speck-integration`.
+
 ## ADDED Requirements
 
 ### Requirement: Stub module presence

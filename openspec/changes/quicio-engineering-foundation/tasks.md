@@ -42,20 +42,16 @@ They end with a working `quicio new --dry-run` for any supported
 - 1.2 RED: `profiles.get('unknown')` throws a typed error with the
   list of valid names. GREEN: implement the lookup with a clear
   message.
-- 1.3 RED: each registered profile exposes `displayName`,
-  `description`, and a `commands()` array containing the four
-  abstract names. GREEN: declare those on each profile.
+- 1.3 RED: each registered profile exposes `displayName` and
+  `description`, and exposes no `commands` field. GREEN: declare
+  those on each profile.
 - 1.4 RED: each registered profile exposes `buildKind`, with
   `library` and `application` declaring `distributable` and
   `experiment` declaring `none`. GREEN: declare the field.
-- 1.5 RED: enumerating abstract command names across every profile
-  and language module yields exactly `['check','test','build',
-  'format']` and never `format:check` or `format-check`. GREEN:
-  keep the concrete names inside the language modules only.
-- 1.6 RED: the `profiles` module's import graph has no edge into
+- 1.5 RED: the `profiles` module's import graph has no edge into
   `languages`, and the `Profile` type exposes exactly `id`,
-  `displayName`, `description`, `commands`, `buildKind`. GREEN:
-  enforce structurally, replacing the old substring scan.
+  `displayName`, `description`, `buildKind`. GREEN: enforce
+  structurally, replacing the old substring scan.
 
 ### Capability 9 — `project-language-model`
 
@@ -67,10 +63,10 @@ Runs immediately after capability 1: the CLI cannot validate
   registry.
 - 9.2 RED: `getLanguage('klingon')` throws a typed error listing
   every registered id. GREEN: implement the lookup.
-- 9.3 RED: each language exposes `packageManager`,
-  `commands.check/test/build`, `commands.format.write`,
-  `commands.format.check`, `resolveBuild`, `derivePackageName`.
-  GREEN: declare the contract.
+- 9.3 RED: each language exposes `packageManager`, `engines`,
+  `wiring.check/test/build`, `wiring.format.write`,
+  `wiring.format.check`, `resolveBuild`, `derivePackageName`. GREEN:
+  declare the contract.
 - 9.4 RED: `resolveBuild('distributable')` returns the same command
   regardless of which profile it came from. GREEN: implement.
 - 9.5 RED: the `languages` import graph has no edge into `profiles`.
@@ -126,6 +122,12 @@ this module's behaviour.
 
 ### Capability 2 — `template-composition`
 
+- 2.0 RED: the keys of every registered language's `wiring` object
+  are exactly `['check','test','build','format']`, never
+  `format:check` or `format-check`, and neither the `Profile` type
+  nor any registered profile exposes a field enumerating those
+  names. GREEN: keep the abstract set in the composition model and
+  the concrete names inside the language modules.
 - 2.1 RED: a `Manifest` type describes the result of a generation
   pass (entries: target path + content + owner). GREEN: declare it.
 - 2.2 RED: `compose(base, profile, language, features)` returns a
@@ -199,9 +201,8 @@ this module's behaviour.
 ### Capability 4 — `typescript-toolchain`
 
 - 4.1 RED: the `typescript` language module exposes `packageManager:
-  'pnpm'`, `engines.node: '>=22'`, `commands.check/test/build`, and
-  `commands.format.write` / `commands.format.check`. GREEN: declare
-  it.
+  'pnpm'`, `engines.node: '>=22'`, `wiring.check/test/build`, and
+  `wiring.format.write` / `wiring.format.check`. GREEN: declare it.
 - 4.2 RED: the `package.json` template for `buildKind:
   distributable` contains `scripts.check`, `scripts.test`,
   `scripts.build`, `scripts.format`, `scripts.format:check`. GREEN:
@@ -224,19 +225,19 @@ this module's behaviour.
   `"name": "my-lib"` in `package.json`. GREEN: implement
   `derivePackageName` as the identity.
 - 4.4 RED: a generated `library + typescript` project passes
-  `pnpm install && pnpm run check && pnpm test && pnpm run build
-  && pnpm run format:check` from a clean shell. GREEN: wire the
-  templates and verify end to end.
+  `pnpm install && pnpm run check && pnpm run test && pnpm run
+  build && pnpm run format:check` from a clean shell. GREEN: wire
+  the templates and verify end to end.
 
 ## Phase 2 — Python + verification (capabilities 5–6)
 
 ### Capability 5 — `python-toolchain`
 
 - 5.1 RED: the `python` language module exposes
-  `packageManager: 'uv'`, `commands.check/test/build` as
-  `task <name>` invocations, and `commands.format.write`
-  (`task format`) / `commands.format.check` (`task format-check`).
-  GREEN: declare it.
+  `packageManager: 'uv'`, `engines.python: '>=3.12'`,
+  `wiring.check/test/build` as `task <name>` invocations, and
+  `wiring.format.write` (`task format`) / `wiring.format.check`
+  (`task format-check`). GREEN: declare it.
 - 5.2 RED: the `pyproject.toml` template for `buildKind:
   distributable` declares `[tool.taskipy.tasks]` with `check`,
   `test`, `build`, `format`, `format-check`. GREEN: author the

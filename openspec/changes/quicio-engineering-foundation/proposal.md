@@ -84,8 +84,8 @@ Introduce the **Quicio Engineering Foundation**:
 
 - S1. `quicio new demo --profile library --language typescript` in a
   fresh directory produces a project that, after a single `pnpm
-  install`, passes `pnpm run check && pnpm test && pnpm run build &&
-  pnpm run format:check` on a clean shell.
+  install`, passes `pnpm run check && pnpm run test && pnpm run
+  build && pnpm run format:check` on a clean shell.
 - S2. `quicio new demo --profile experiment --language python`
   produces a project that, after `uv sync`, passes `uv run task check &&
   uv run task test && uv run task build && uv run task format-check`.

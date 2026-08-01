@@ -27,20 +27,33 @@ fields:
 - `id`: a stable kebab-case identifier (`typescript`, `python`).
 - `displayName`: a human-readable label.
 - `packageManager`: the package manager the generated project uses.
-- `commands.check`, `commands.test`, `commands.build`: strings that
-  resolve to a concrete script or task in the generated project.
-- `commands.format.write` and `commands.format.check`: the two modes
-  of the single abstract `format` command.
+- `engines`: a free-form `{ key: version-requirement }` record of the
+  language's runtime version constraints. TypeScript declares
+  `engines.node`; Python declares `engines.python`. Other keys SHALL
+  NOT appear.
+- `wiring.check`, `wiring.test`, `wiring.build`: strings that resolve
+  to a concrete script or task in the generated project.
+- `wiring.format.write` and `wiring.format.check`: the two modes of
+  the single abstract `format` command.
 - `resolveBuild(buildKind)`: returns the concrete `build` command for
   a given abstract `buildKind`.
 - `derivePackageName(projectName)`: returns the language's concrete
   package or distribution name for a validated project name.
 
+`Language.wiring` is the mapping from abstract command names to
+concrete invocations, and it is the only place that mapping exists.
+The abstract set itself is fixed by the composition model and speced
+in `template-composition`; no profile and no language redeclares it.
+The field is named `wiring` rather than `commands` precisely so that
+"the four names" and "how they are invoked" never read as the same
+thing.
+
 #### Scenario: language exposes the documented contract
 
 - **WHEN** any registered language is inspected
-- **THEN** it SHALL expose every field listed above, and its abstract
-  command names SHALL be exactly `check`, `test`, `build`, `format`.
+- **THEN** it SHALL expose every field listed above, and the keys of
+  its `wiring` object SHALL be exactly `check`, `test`, `build`, and
+  `format`.
 
 ### Requirement: Language registry
 
