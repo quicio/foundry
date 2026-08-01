@@ -29,9 +29,12 @@ Introduce the **Quicio Engineering Foundation**:
 - Two initial languages: `TypeScript`, `Python`.
 - A **verification contract** that every generated project must satisfy:
   it MUST expose working `check`, `test`, `build`, and `format` commands.
-- A **feature** axis reserved for opt-in capabilities. v0 only documents
-  the features the product owner has named; we do not implement features
-  without a real consumer.
+- A **feature** axis reserved for opt-in capabilities. v0 registers
+  only the two features that have a spec in this change
+  (`openspec-bootstrap`, `speck-integration`), and both are empty
+  stubs. `github-actions` and `docker` are named in the roadmap and
+  are deliberately **not** registered, so asking for them fails
+  honestly instead of succeeding as a silent no-op.
 
 ## Goals
 
@@ -41,9 +44,14 @@ Introduce the **Quicio Engineering Foundation**:
 - G2. Make composition the primitive: the same profile must work with
   any supported language by swapping only the language module, not by
   duplicating a template per pair.
-- G3. Make features opt-in and additive: enabling or disabling a
-  feature on an existing generated project MUST not rewrite files
-  owned by other features or by the base.
+- G3. Make features opt-in and strictly additive at generation time:
+  a feature contributes new files only and MUST NOT be able to
+  rewrite a file owned by the base, the profile, the language, or
+  another feature. In v0 this is enforced structurally, by the
+  `contribute(context) -> ManifestEntry[]` signature, not by
+  convention. Changing the feature set of an *already generated*
+  project is out of scope for v0, because the CLI exposes only
+  `quicio new`.
 - G4. Keep the CLI surface tight: `quicio new <project>` for v0, with
   `-p/--profile`, `-l/--language`, and `--with/--without` flags.
 - G5. Treat the verification contract (`check/test/build/format`) as
@@ -80,10 +88,11 @@ Introduce the **Quicio Engineering Foundation**:
   pnpm run format:check` on a clean shell.
 - S2. `quicio new demo --profile experiment --language python`
   produces a project that, after `uv sync`, passes `uv run task check &&
-  uv run task test && uv run task build && uv run task format --check`.
+  uv run task test && uv run task build && uv run task format-check`.
 - S3. Generating the same combination twice into the same directory
-  fails with a non-zero exit and a clear message, instead of
-  overwriting or corrupting the existing project.
+  fails with exit code 3 and a clear message, with or without
+  `--force`, instead of overwriting or corrupting the existing
+  project.
 - S4. The CLI's internal representation of (profile, language,
   features) is exercised by unit tests covering: missing profile,
   missing language, unknown feature, conflicting `--with/--without`
@@ -93,6 +102,26 @@ Introduce the **Quicio Engineering Foundation**:
   (profile, language) pair: there is exactly one language module per
   language and one profile module per profile; the final layout is
   the deterministic composition of base + profile + language + features.
+  The observable test is that no language module references the
+  strings `library`, `application`, or `experiment`: a language
+  module receives the profile's abstract `buildKind` and nothing
+  else.
+- S6. `quicio new my-lib --language python` produces a project whose
+  distribution name is `my-lib`, whose module directory is
+  `src/my_lib/`, and whose generated test imports `my_lib` and
+  passes. A generated project that installs and then fails its own
+  first test on a hyphenated name is the defect this criterion
+  exists to prevent.
+- S7. Two generation runs of the same arguments, on different dates,
+  under different users, from different working directories, produce
+  byte-identical output. Every dependency carries an exact version
+  literal and no lockfile is shipped, so "passes on a clean shell"
+  stays a property of the generator rather than of whatever the
+  registry resolved that day.
+- S8. The generator never writes outside `<out>/<project>` and never
+  overwrites an existing file. Absolute paths, `..` segments, and
+  symlinked components resolving outside the target are all rejected
+  before the first byte is written.
 
 ## Out of scope (follow-up OpenSpec changes, *not* this one)
 

@@ -52,8 +52,19 @@ in both `--with` and `--without`.
 
 ### Requirement: Safe target directory handling
 
-The CLI SHALL refuse to write into a non-empty target directory
-unless `--force` is supplied.
+`--force` SHALL have exactly one meaning: it permits writing into a
+target directory that is not empty. `--force` SHALL NOT authorise
+overwriting, and the CLI SHALL NOT overwrite or delete an existing
+file under any flag combination.
+
+The CLI SHALL therefore behave as follows:
+
+- Target directory absent or empty: proceed, `--force` not required.
+- Target directory non-empty, `--force` absent: exit 3.
+- Target directory non-empty, `--force` present, no manifest path
+  collides with an existing file: proceed.
+- Any manifest path collides with an existing file: exit 3, with or
+  without `--force`.
 
 #### Scenario: non-empty target directory without --force
 
@@ -66,6 +77,20 @@ unless `--force` is supplied.
 
 - **WHEN** the target directory does not exist or is empty
 - **THEN** the CLI SHALL proceed without requiring `--force`.
+
+#### Scenario: --force writes alongside unrelated existing files
+
+- **WHEN** the target directory contains only files whose paths are
+  absent from the resolved manifest, and `--force` is supplied
+- **THEN** the CLI SHALL write the manifest and SHALL leave every
+  pre-existing file byte-identical.
+
+#### Scenario: --force does not authorise overwriting
+
+- **WHEN** a resolved manifest path already exists on disk and
+  `--force` is supplied
+- **THEN** the CLI SHALL exit with code 3, SHALL name the colliding
+  path, and SHALL NOT modify or delete any existing file.
 
 ### Requirement: Dry run
 
@@ -81,13 +106,17 @@ NOT write files.
 ### Requirement: Post-generation verification
 
 Unless `--no-verify` is supplied, the CLI SHALL run the verification
-contract on the generated project and SHALL propagate its exit code.
+contract on the generated project. When verification fails, the CLI
+SHALL exit with code 4 and SHALL NOT propagate the raw exit code of
+the underlying tool, which is not a stable contract. The failing
+step's name and `stderr` SHALL be reported on stderr.
 
 #### Scenario: a generated project's check fails
 
 - **WHEN** the generated project's `check` step exits non-zero
-- **THEN** the CLI SHALL exit non-zero and SHALL NOT delete the
-  generated project (partial work is preserved).
+- **THEN** the CLI SHALL exit with code 4, SHALL print the failing
+  step's name and `stderr`, and SHALL NOT delete the generated
+  project (partial work is preserved).
 
 #### Scenario: --no-verify skips the smoke test
 
@@ -95,14 +124,121 @@ contract on the generated project and SHALL propagate its exit code.
 - **THEN** the CLI SHALL exit 0 after writing files, even if the
   generated project's tools would fail.
 
-### Requirement: Idempotency of repeated runs into the same directory
+### Requirement: Repeated runs into the same directory fail closed
 
 Running `quicio new` twice into the same directory with the same
-arguments SHALL fail rather than overwrite.
+arguments SHALL fail rather than overwrite. This is a fail-closed
+guarantee, not idempotency: the second run does not converge to the
+same state, it refuses to run.
 
 #### Scenario: second run into the same directory
 
 - **WHEN** `quicio new demo` runs successfully once, and is then
   invoked again with the same arguments
-- **THEN** the second invocation SHALL exit non-zero and SHALL NOT
-  delete or modify any file from the first run.
+- **THEN** the second invocation SHALL exit with code 3 and SHALL
+  NOT delete or modify any file from the first run.
+
+#### Scenario: second run with --force still fails closed
+
+- **WHEN** the second invocation adds `--force`
+- **THEN** it SHALL still exit with code 3, because every manifest
+  path collides with a file written by the first run.
+
+### Requirement: Exit code table
+
+The CLI SHALL use exactly the following exit codes, and every failure
+path SHALL map to one of them:
+
+| Code | Meaning                                                        |
+| ---- | -------------------------------------------------------------- |
+| 0    | Success.                                                       |
+| 1    | Unexpected internal error (a bug in the generator).            |
+| 2    | Invalid invocation: unknown profile, language or feature; the same feature in `--with` and `--without`; an invalid project name. |
+| 3    | Filesystem refusal: non-empty target without `--force`; a manifest path already on disk; a path that escapes the target directory. |
+| 4    | Verification failed on the generated project.                  |
+
+A failure SHALL NOT exit with an undocumented code, and SHALL NOT
+reuse a code whose meaning does not match the failure.
+
+#### Scenario: every documented failure maps to its code
+
+- **WHEN** each failure path in this spec is exercised
+- **THEN** the observed exit code SHALL be the one this table
+  assigns to it.
+
+#### Scenario: an unexpected internal error exits 1
+
+- **WHEN** the generator raises an error that is not one of its
+  typed, documented failures
+- **THEN** it SHALL exit with code 1 and SHALL NOT report the
+  failure as an invalid invocation.
+
+### Requirement: Project name validation
+
+The CLI SHALL validate `<project>` before resolving anything else. A
+valid project name SHALL match `^[a-z][a-z0-9._-]*$` and SHALL be at
+most 214 characters.
+
+The leading-letter rule is not cosmetic: a name starting with a digit
+cannot become a valid Python module identifier, and uppercase or
+space characters are invalid as an npm package name. Validating once,
+at the CLI, is what lets both language modules derive their concrete
+names without re-validating.
+
+Scoped npm names (`@scope/name`) are out of scope for v0.
+
+#### Scenario: an uppercase name is rejected
+
+- **WHEN** `quicio new MiProyecto` is run
+- **THEN** the CLI SHALL exit with code 2 and the error SHALL state
+  the accepted pattern.
+
+#### Scenario: a name starting with a digit is rejected
+
+- **WHEN** `quicio new 2fast` is run
+- **THEN** the CLI SHALL exit with code 2, because the name cannot
+  yield a valid Python module identifier.
+
+#### Scenario: a name containing a path separator is rejected
+
+- **WHEN** `quicio new foo/bar` or `quicio new ../escape` is run
+- **THEN** the CLI SHALL exit with code 2 and SHALL NOT create any
+  directory.
+
+#### Scenario: a valid name is accepted
+
+- **WHEN** `quicio new my-lib` is run
+- **THEN** the CLI SHALL proceed, and each language module SHALL
+  derive its own concrete package name from `my-lib`.
+
+### Requirement: Target directory resolution
+
+`--out <dir>` SHALL set the parent directory into which the project
+directory is created. It SHALL default to the current working
+directory. The resolved target directory SHALL be
+`<out>/<project>`, and every file the generator writes SHALL live
+inside it.
+
+#### Scenario: --out is defaulted
+
+- **WHEN** `quicio new demo` is run with no `--out`
+- **THEN** the target directory SHALL be `./demo` relative to the
+  current working directory.
+
+#### Scenario: --out selects the parent directory
+
+- **WHEN** `quicio new demo --out /tmp/work` is run
+- **THEN** the target directory SHALL be `/tmp/work/demo`.
+
+#### Scenario: a missing --out parent is created
+
+- **WHEN** `--out` names a directory that does not exist
+- **THEN** the CLI SHALL create it along with the target directory,
+  and SHALL NOT require `--force` to do so.
+
+#### Scenario: --out does not widen the write boundary
+
+- **WHEN** any manifest entry would resolve outside
+  `<out>/<project>`
+- **THEN** the CLI SHALL exit with code 3, as specified in
+  `generator-filesystem`.

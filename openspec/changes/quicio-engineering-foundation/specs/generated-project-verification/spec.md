@@ -18,24 +18,46 @@ that returns an aggregated result of the shape:
 - `ok: boolean`
 - `steps: { name, ok, stderr? }[]`
 
-where `name` is one of `check`, `test`, `build`, `format:check`.
+where `name` is one of the four abstract command names `check`,
+`test`, `build`, `format`. The `format` step SHALL be executed in
+`check` mode; the concrete script or task the language module maps
+that mode to (`format:check`, `format-check`, or another name) SHALL
+NOT leak into `steps[].name`.
 
 #### Scenario: result aggregates every step
 
 - **WHEN** `verify` returns
 - **THEN** `steps` SHALL contain exactly four entries, in the fixed
-  order `check`, `test`, `build`, `format:check`.
+  order `check`, `test`, `build`, `format`.
+
+#### Scenario: step names carry no concrete script name
+
+- **WHEN** `steps` is inspected for a TypeScript project whose
+  concrete check-mode script is `format:check`
+- **THEN** the fourth entry's `name` SHALL be `format`.
 
 ### Requirement: Fixed step order
 
 The four steps SHALL be executed in the fixed order
-`check`, `test`, `build`, `format:check`.
+`check`, `test`, `build`, `format`.
 
 #### Scenario: steps run in fixed order
 
 - **WHEN** `verify` is called
 - **THEN** the recorded `steps` array SHALL be in the order above
   regardless of which step fails first.
+
+### Requirement: Format step runs in check mode
+
+The `format` step SHALL invoke the language module's `format` check
+mode and SHALL NOT invoke its write mode. Verification SHALL NOT
+reformat the generated project.
+
+#### Scenario: verify does not rewrite source files
+
+- **WHEN** `verify` completes with `ok=true` on a generated project
+- **THEN** every file written by the generator SHALL be
+  byte-identical to its state before `verify` ran.
 
 ### Requirement: Short-circuit on failure
 
@@ -46,9 +68,9 @@ steps, SHALL record the failing step's `stderr`, and SHALL set
 #### Scenario: failing check short-circuits
 
 - **WHEN** the `check` step exits non-zero
-- **THEN** `verify` SHALL NOT run `test`, `build`, or
-  `format:check`, and the result SHALL have `ok=false` with the
-  failing step's `stderr` preserved.
+- **THEN** `verify` SHALL NOT run `test`, `build`, or `format`, and
+  the result SHALL have `ok=false` with the failing step's `stderr`
+  preserved.
 
 ### Requirement: Friendly missing-tool errors
 
