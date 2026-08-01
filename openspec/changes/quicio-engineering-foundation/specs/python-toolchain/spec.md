@@ -22,19 +22,20 @@ The Python language module SHALL declare the following fields:
 
 - `id: 'python'`
 - `packageManager: 'uv'`
-- `python: '>=3.12'`
-- `commands.check`, `commands.test`, `commands.build`: strings that
-  resolve to `task <name>` invocations.
-- `commands.format.write` (`task format`) and
-  `commands.format.check` (`task format-check`): the two modes of
-  the single abstract `format` command. There is no fifth abstract
+- `engines.python: '>=3.12'`
+- `wiring.check`, `wiring.test`, `wiring.build`: strings that resolve
+  to `task <name>` invocations.
+- `wiring.format.write` (`task format`) and
+  `wiring.format.check` (`task format-check`): the two modes of the
+  single abstract `format` command. There is no fifth abstract
   command.
 
 #### Scenario: language module declares the documented metadata
 
 - **WHEN** the Python language module is inspected
-- **THEN** it SHALL expose the fields listed above, and its abstract
-  command names SHALL be exactly `check`, `test`, `build`, `format`.
+- **THEN** it SHALL expose the fields listed above, and the keys of
+  its `wiring` object SHALL be exactly `check`, `test`, `build`, and
+  `format`.
 
 ### Requirement: Task definitions in pyproject.toml
 
@@ -125,7 +126,8 @@ them is the most common defect in a Python generator.
   guarantees it is legal under PEP 503.
 - The **module name**, which is the directory created under `src/`
   and the identifier the tests import, SHALL be the project name
-  with every `-` and `.` replaced by `_`.
+  with every `-` and `.` replaced by `_`. The result SHALL match
+  `^[a-z][a-z0-9_]*$`, i.e. a legal Python module identifier.
 
 `derivePackageName(projectName)` SHALL return the distribution name.
 The module name SHALL be derived by the Python module and used for
@@ -145,12 +147,33 @@ the source directory, the import in the generated test, and the
 - **THEN** the module directory SHALL replace it with `_`, so the
   module remains a single importable identifier.
 
+#### Scenario: the derived module name is a legal Python identifier
+
+- **WHEN** the module name is derived from any project name accepted
+  by the CLI regex
+- **THEN** the result SHALL match `^[a-z][a-z0-9_]*$`.
+
 #### Scenario: the generated test imports successfully
 
 - **WHEN** `uv run task test` runs in a project generated from a
   hyphenated name
 - **THEN** the import of the module SHALL resolve and the test SHALL
   pass.
+
+### Requirement: Tool config files are language-owned
+
+The Python language module SHALL own the tool configuration inside
+the generated `pyproject.toml`: the `[tool.ruff]`, `[tool.pytest.ini_options]`,
+and `[tool.basedpyright]` sections. These sections are part of the
+language module's manifest entries and SHALL NOT be re-contributed
+by `base`, `profile`, or `features`.
+
+#### Scenario: tool sections are owned by the language module
+
+- **WHEN** the resolved manifest is inspected for any Python profile
+- **THEN** it SHALL contain a single `pyproject.toml` entry owned by
+  `language:python`, and its `[tool.ruff]`, `[tool.pytest.ini_options]`,
+  and `[tool.basedpyright]` sections SHALL each be present.
 
 ### Requirement: Workspace integrity
 

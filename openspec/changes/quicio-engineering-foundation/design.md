@@ -10,10 +10,15 @@ contributions, in this fixed order:
 base       ->  profile  ->  language  ->  selected features
 ```
 
-- **base** is the minimal scaffold that every project shares: a README
-  placeholder, a `.gitignore`, a project-level `check/test/build/format`
-  entrypoint whose implementation is supplied by the profile + language
-  (the base only declares the *names* of the four commands).
+- **base** is the minimal scaffold that every project shares: a
+  `README.md` placeholder, a `.gitignore`, and the declaration of the
+  four abstract command names. The base layer owns no behaviour and
+  declares no scripts: the implementation is supplied by the profile
+  + language. v0 has no spec for the base; its contents are the
+  README, the `.gitignore`, and the abstract command names that the
+  composition model already fixes. The README's instruction to commit
+  the toolchain lockfile is speced per language in
+  `typescript-toolchain` and `python-toolchain`.
 - **profile** contributes the structure of the source tree, the
   convention for tests, and a single abstract `buildKind`
   (`distributable` or `none`). Profiles are language-agnostic
@@ -221,7 +226,9 @@ only influence on the language module's build wiring.
 - `buildKind: distributable`.
 - Tree: `src/`, `tests/`, single `package.json` / `pyproject.toml`.
 - `build` MUST produce a distributable artifact in `dist/`.
-- `test` MUST run the unit tests and report coverage.
+- `test` MUST run the unit tests. Coverage is **not** part of v0: the
+  `test` step runs the tests and reports pass/fail, nothing more.
+  Adding coverage is the subject of a separate OpenSpec change.
 - `format` check mode MUST be wired.
 
 ### application (model only in v0; full delivery is a follow-up change)
@@ -239,7 +246,8 @@ only influence on the language module's build wiring.
 - Tree: `src/`, `tests/`, single manifest, no `dist/` requirement.
 - `build` MUST succeed but is a no-op (`echo "no-op build"` in both
   languages).
-- `test` MUST run the tests but coverage is optional.
+- `test` MUST run the tests. Coverage is not part of v0 (same reason
+  as `library`).
 - `format` check mode MUST be wired.
 
 ## 6. Languages
@@ -326,7 +334,7 @@ contract it enforces. The CI pipeline (added in a follow-up change
 after the generator is functional locally) MUST run:
 
 ```
-pnpm run check && pnpm test && pnpm run build && pnpm run format:check
+pnpm run check && pnpm run test && pnpm run build && pnpm run format:check
 ```
 
 For v0 (no CI yet), the orchestrator runs these locally after every

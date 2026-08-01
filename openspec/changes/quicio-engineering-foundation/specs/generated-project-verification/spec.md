@@ -72,6 +72,24 @@ steps, SHALL record the failing step's `stderr`, and SHALL set
   the result SHALL have `ok=false` with the failing step's `stderr`
   preserved.
 
+### Requirement: Top-level ok aggregates every step
+
+The result's top-level `ok` SHALL be `true` if and only if every
+recorded step has `ok: true`. A `verify` run with no recorded steps
+SHALL return `ok: false`.
+
+#### Scenario: ok is the conjunction of every step
+
+- **WHEN** `verify` returns
+- **THEN** the top-level `ok` SHALL equal
+  `steps.every(step => step.ok)`.
+
+#### Scenario: short-circuited ok reflects the failing step
+
+- **WHEN** `verify` short-circuits on a failing step
+- **THEN** the top-level `ok` SHALL be `false` and the recorded
+  `steps` array SHALL contain only the steps that ran, in order.
+
 ### Requirement: Friendly missing-tool errors
 
 When a required tool is missing on `PATH` (e.g. `pnpm` not

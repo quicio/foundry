@@ -11,6 +11,37 @@ pair.
 
 ## ADDED Requirements
 
+### Requirement: Abstract command set is exactly four
+
+The abstract command set SHALL be exactly `check`, `test`, `build`,
+`format`. `format` SHALL have two modes, `write` and `check`; the
+modes are two invocations of the same abstract command and SHALL NOT
+be modelled as a fifth command. Concrete script or task names that a
+language module chooses for the check mode (for example
+`format:check` in `package.json` or `format-check` in
+`pyproject.toml`) are implementation details of that language module
+and SHALL NOT appear in the abstract model.
+
+The set belongs to the composition model, not to any one layer. No
+`Profile` declares it, because it never varies per profile; a
+`Language` declares only how each name is wired to a concrete
+invocation, through `Language.wiring`.
+
+#### Scenario: no fifth abstract command exists
+
+- **WHEN** the keys of any registered language's `wiring` object are
+  enumerated
+- **THEN** the resulting set SHALL be exactly
+  `['check', 'test', 'build', 'format']` and SHALL NOT contain
+  `format:check`, `format-check`, or any other variant.
+
+#### Scenario: no layer redeclares the abstract set
+
+- **WHEN** the `Profile` type and every registered profile are
+  inspected
+- **THEN** neither SHALL expose a field enumerating the abstract
+  command names.
+
 ### Requirement: Composition order
 
 The system SHALL compose layers in the fixed order:
@@ -74,18 +105,40 @@ real feature requires it.
 ### Requirement: Feature contribution signature
 
 A feature module SHALL expose
-`contribute(context) -> ManifestEntry[]`, where `context` carries the
-resolved profile `buildKind`, the language `id`, the project name,
-and the path conventions exposed by `composition`. A feature module
-SHALL NOT receive the accumulated `Manifest` and SHALL NOT return
-one. The composition engine, not the feature, appends the returned
-entries and enforces path uniqueness.
+`contribute(context) -> ManifestEntry[]`, where `context` has the
+fixed shape:
+
+```
+type FeatureContext = {
+  projectName: string;          // the validated CLI project name
+  languageId: string;           // 'typescript' | 'python' (the registered set)
+  buildKind: 'distributable' | 'none';
+  paths: {
+    src: string;                // 'src' — root for language-owned source
+    tests: string;              // 'tests' — root for profile-owned tests
+    projectRoot: string;        // '' — relative to the target directory
+  };
+};
+```
+
+The `paths` field exposes the same conventions every layer uses;
+features SHALL NOT derive their own. A feature module SHALL NOT
+receive the accumulated `Manifest` and SHALL NOT return one. The
+composition engine, not the feature, appends the returned entries
+and enforces path uniqueness.
 
 #### Scenario: a feature cannot observe or rewrite other layers
 
 - **WHEN** `contribute(context)` is invoked on any feature module
 - **THEN** the argument SHALL NOT expose entries contributed by
   `base`, `profile`, `language`, or another feature.
+
+#### Scenario: context shape is the documented one
+
+- **WHEN** any feature module's `context` argument is inspected
+- **THEN** it SHALL be an object with exactly the keys
+  `projectName`, `languageId`, `buildKind`, and `paths`, and `paths`
+  SHALL have exactly the keys `src`, `tests`, and `projectRoot`.
 
 #### Scenario: a feature returning no entries changes nothing
 

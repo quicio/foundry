@@ -225,6 +225,13 @@ inside it.
 - **THEN** the target directory SHALL be `./demo` relative to the
   current working directory.
 
+#### Scenario: --out is empty
+
+- **WHEN** `--out ''` is supplied
+- **THEN** the CLI SHALL treat it as if `--out` were omitted and
+  SHALL target `./<project>` relative to the current working
+  directory.
+
 #### Scenario: --out selects the parent directory
 
 - **WHEN** `quicio new demo --out /tmp/work` is run
